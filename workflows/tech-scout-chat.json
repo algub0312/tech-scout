@@ -1,0 +1,186 @@
+{
+  "name": "Tech Scout – Chat",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ],
+      "id": "06139caf-9b6e-4d84-9040-c9c434aaeef1",
+      "name": "When chat message received",
+      "webhookId": "f3053a07-59c9-4870-a0ad-3f970913d1e4"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are Tech Scout, a technology intelligence assistant.\n\nAvailable briefs: retrieval augmented generation (RAG), AI agents, solid-state batteries, software supply chain security.\n\nRules:\n- ALWAYS call the tech_briefs tool before answering.\n- When the question mentions several technologies, call tech_briefs SEPARATELY for each one (e.g. one search for \"RAG maturity\", one for \"AI agents maturity\").\n- Follow-up questions without a topic (e.g. \"Who are the key players?\") refer to the technology discussed in the previous message. Search for that technology.\n- Answer only from the tool results. Reply \"I don't have a brief on this topic yet.\" ONLY if the topic is not one of the available briefs.\n- Mention which brief you used, e.g. (source: ai-agents.md).\n- For comparisons, start with a short Markdown table, then a 2-3 sentence conclusion.\n- Be concise: under 250 words.\n- NEVER mention any company, institution, number or fact that is not literally present in the tool results. If the results only cover one of the technologies, say so instead of filling the gap.\n- For follow-up questions that refer to several technologies discussed earlier, call tech_briefs once for EACH of them."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "a43877d1-1376-4ec0-b676-0d63832fb0db",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "qwen3:4b-instruct-2507-q4_K_M",
+        "options": {
+          "temperature": 0.2,
+          "numCtx": 8192
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        96,
+        208
+      ],
+      "id": "2455c740-e444-4511-8d51-756116b0df16",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "VbaGIvw2SojrRjra",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        208
+      ],
+      "id": "7f8b81e6-e914-4356-8607-7432b99f22a7",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:latest"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        432,
+        352
+      ],
+      "id": "ef1f1ad7-d4e0-4d3b-8976-6d7758b376f0",
+      "name": "Embeddings Ollama",
+      "credentials": {
+        "ollamaApi": {
+          "id": "VbaGIvw2SojrRjra",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "  Search the technology briefs (retrieval augmented generation, AI agents, solid-state batteries, software supply chain security). Use for any question about technologies, maturity (TRL), key players, trends or challenges.",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "tech_briefs",
+          "mode": "list",
+          "cachedResultName": "tech_briefs"
+        },
+        "topK": 6,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        448,
+        192
+      ],
+      "id": "b5dccf7d-7bf5-473e-bbcf-d149a3e76be0",
+      "name": "tech_briefs",
+      "credentials": {
+        "qdrantApi": {
+          "id": "m8WRVs5l2w5htsGK",
+          "name": "Qdrant account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama": {
+      "ai_embedding": [
+        [
+          {
+            "node": "tech_briefs",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tech_briefs": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "120ac941-1815-4990-9b3b-d72a42b910ba",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "86c2c135ea278e8537dd8672e592d22e63222c84bcd5fe4ffaea4e3ae6419dc1"
+  },
+  "nodeGroups": [],
+  "id": "JgJlgtMLxpSrkCpI",
+  "tags": []
+}

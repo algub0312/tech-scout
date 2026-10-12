@@ -1,0 +1,328 @@
+{
+  "name": "Tech Scout – Collect",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Tech Scout",
+        "formDescription": "Enter a technology to scout",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "topic",
+              "placeholder": "e.g. retrieval augmented generation",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "05773019-1ef9-477c-b55f-c9bbf2228098",
+      "name": "On form submission",
+      "webhookId": "94241e0e-892a-45f3-a8ad-79e756977392"
+    },
+    {
+      "parameters": {
+        "jsCode": "const topic = $('On form submission').first().json.topic;\nconst papers = $('OpenAlex Papers').first().json.results;\nconst trend = $('OpenAlex Trend').first().json.group_by;\n\n// OpenAlex dă abstractul ca \"inverted index\" -> îl reconstruim în text\nfunction rebuildAbstract(inv) {\n  if (!inv) return '';\n  const words = [];\n  for (const [word, positions] of Object.entries(inv)) {\n    for (const p of positions) words[p] = word;\n  }\n  return words.join(' ');\n}\n\n// Top instituții după numărul de articole\nconst instCount = {};\nfor (const p of papers) {\n  const seen = new Set();\n  for (const a of p.authorships ?? []) {\n    for (const inst of a.institutions ?? []) {\n      if (inst.type === 'company') continue;\n      if (!seen.has(inst.display_name)) {\n        seen.add(inst.display_name);\n        instCount[inst.display_name] = (instCount[inst.display_name] ?? 0) + 1;\n      }\n    }\n  }\n}\nconst topInstitutions = Object.entries(instCount)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 6)\n  .map(([name, count]) => ({ name, count }));\n\n// Publicații pe an (ultimii 6 ani)\nconst groups = $('OpenAlex Trend').first().json.group_by ?? [];\nconst pubsPerYear = groups\n  .map(t => ({ year: Number(String(t.key_display_name ?? t.key).trim()), count: t.count }))\n  .filter(t => !Number.isNaN(t.year) && t.year >= 2020 && t.year <= $now.year)\n  .sort((a, b) => a.year - b.year);\n\nconst cleanPapers = papers.map(p => ({\n  title: p.title,\n  year: p.publication_year,\n  citations: p.cited_by_count,\n  url: p.doi ?? p.id,\n  abstract: rebuildAbstract(p.abstract_inverted_index).slice(0, 1500),\n}));\n\n// Semnale de industrie: articole cu cel puțin un autor din companie\nconst companyCount = {};\nlet papersWithIndustry = 0;\nfor (const p of papers) {\n  const seen = new Set();\n  for (const a of p.authorships ?? []) {\n    for (const inst of a.institutions ?? []) {\n      if (inst.type === 'company' && !seen.has(inst.display_name)) {\n        seen.add(inst.display_name);\n        companyCount[inst.display_name] = (companyCount[inst.display_name] ?? 0) + 1;\n      }\n    }\n  }\n  if (seen.size > 0) papersWithIndustry++;\n}\nconst topCompanies = Object.entries(companyCount)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 8)\n  .map(([name, count]) => ({ name, count }));\nconst industryShare = Math.round((100 * papersWithIndustry) / papers.length);\n\nreturn [{\n  json: {\n    topic,\n    paper_count: cleanPapers.length,\n    pubs_per_year: pubsPerYear,\n    top_institutions: topInstitutions,\n    papers: cleanPapers,\n    industry_share: industryShare,\n    top_companies: topCompanies,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "aec487c1-d6eb-4ec8-b39c-c6bbb309b5ad",
+      "name": "Clean & Metrics"
+    },
+    {
+      "parameters": {
+        "url": "https://api.openalex.org/works",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "from_publication_date:2021-01-01,has_abstract:true"
+            },
+            {
+              "name": "sort",
+              "value": "relevance_score:desc"
+            },
+            {
+              "name": "per-page",
+              "value": "50"
+            },
+            {
+              "name": "select",
+              "value": "id,title,publication_year,cited_by_count,doi,authorships,abstract_inverted_index"
+            },
+            {
+              "name": "mailto",
+              "value": "your-email@example.com"
+            },
+            {
+              "name": "search",
+              "value": "=\"{{ $json.topic }}\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "03172f0c-a9a1-4968-a4f0-5663f90409a4",
+      "name": "OpenAlex Papers"
+    },
+    {
+      "parameters": {
+        "url": "https://api.openalex.org/works",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "group_by",
+              "value": "publication_year"
+            },
+            {
+              "name": "mailto",
+              "value": "your-email@example.com"
+            },
+            {
+              "name": "search",
+              "value": "=\"{{ $('On form submission').item.json.topic }}\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "e7b906fe-aef4-42ec-82c0-b84e3a17170c",
+      "name": "OpenAlex Trend"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\nconst papers = d.papers\n  .filter(p => p.abstract && p.abstract.length > 200)\n  .slice(0, 12);\n\nconst context = papers\n  .map((p, i) => `[${i + 1}] ${p.title} (${p.year}, ${p.citations} citations)\\n${p.abstract.slice(0, 600)}`)\n  .join('\\n\\n');\n\nreturn [{\n  json: {\n    topic: d.topic.replace(/\\b\\w/g, c => c.toUpperCase()),\n    trend: d.pubs_per_year\n      .map(t => t.year === $now.year ? `${t.year} (partial year): ${t.count}` : `${t.year}: ${t.count}`)\n      .join(', '),\n    companies: d.top_companies.map(c => `${c.name} (${c.count})`).join(', ') || 'none found',\n    industry_share: d.industry_share,\n    institutions: d.top_institutions.map(i => `${i.name} (${i.count})`).join(', '),\n    context,\n    sources: papers.map((p, i) => ({ n: i + 1, title: p.title, url: p.url })),\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "85ff0849-2ad3-479c-9ff6-f24c29bfbd91",
+      "name": "Build Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a technology analyst. Write a concise technology brief in Markdown about: {{ $json.topic }}\n\nUse ONLY the data below. Cite papers as [n]. If something is not supported by the data, say so explicitly.\n\nPublications per year (note: {{ $now.year }} is still in progress, so its count is partial):\n{{ $json.trend }}\n\nMost active institutions among the top papers:\n{{ $json.institutions }}\n\nCompanies among the top papers: {{ $json.companies }}\nShare of top papers with at least one industry author: {{ $json.industry_share }}%\n\nTRL guide:\n- TRL 3-4: mostly academic proofs of concept, little industry involvement\n- TRL 5-6: prototypes and benchmarks, growing industry involvement\n- TRL 7-9: widely deployed in commercial products\nNote: publication data underrepresents commercial deployment. If papers describe production use or industry share is high, lean towards a higher TRL and say why.\n\nCitation rule: every factual sentence must end with citations, for example:\n\"RAG reduces hallucinations by grounding answers in retrieved documents [1][6].\"\n\nPublication counts and industry share come from OpenAlex statistics, not from the papers: do NOT add [n] citations to them, write \"(OpenAlex)\" instead. Use [n] only for claims taken from a specific paper.\n\nPapers:\n{{ $json.context }}\n\nUse exactly this structure:\n# {{ $json.topic }} - Technology Brief\n## What it is\n(2-3 sentences, plain language)\n## Maturity\n(estimated TRL 1-9 with a one-line justification)\n## Key players\n(list academic institutions and companies separately)\n## Trends\n## Applications and open challenges\n## Sources\n\nLeave the Sources section empty, it is filled automatically. Keep it under 400 words. /no_think",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "7de8da8d-603a-4534-9357-e5dfaf7d7654",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "qwen3:4b-instruct-2507-q4_K_M",
+        "options": {
+          "temperature": 0.3,
+          "numCtx": 8192
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        176
+      ],
+      "id": "678bfd16-52f4-478a-839d-cc8c481c64ae",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "VbaGIvw2SojrRjra",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.text ?? '';\nconst ctx = $('Build Context').first().json;\n\nlet brief = raw.replace(/<think>[\\s\\S]*?<\\/think>/g, '').trim();\nbrief += '\\n\\n' + ctx.sources.map(s => `[${s.n}] ${s.title} - ${s.url}`).join('\\n');\n\nconst slug = ctx.topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');\n\nreturn [{ json: { topic: ctx.topic, brief, file_name: `${slug}.md` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        0
+      ],
+      "id": "1d588e6f-e622-4b8b-ba3e-cd693d1bd107",
+      "name": "Finalize"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "brief",
+        "options": {
+          "fileName": "={{ $json.file_name }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1712,
+        0
+      ],
+      "id": "48d891f4-279d-49d8-ade7-65af0a45e8d4",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/files/{{ $('Finalize').item.json.file_name }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1952,
+        0
+      ],
+      "id": "043bedeb-ca62-443e-bba9-f8f50c7ff110",
+      "name": "Read/Write Files from Disk"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "OpenAlex Papers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAlex Papers": {
+      "main": [
+        [
+          {
+            "node": "OpenAlex Trend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAlex Trend": {
+      "main": [
+        [
+          {
+            "node": "Clean & Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean & Metrics": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Finalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ab37c439-32bb-4544-876b-2115c4ef11ae",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "86c2c135ea278e8537dd8672e592d22e63222c84bcd5fe4ffaea4e3ae6419dc1"
+  },
+  "nodeGroups": [],
+  "id": "tFJiqzfbfhw2RLlb",
+  "tags": []
+}

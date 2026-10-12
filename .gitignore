@@ -1,0 +1,10 @@
+# runtime output from n8n
+files/
+
+# environment / secrets
+.env
+
+# OS / editor
+.DS_Store
+.vscode/
+*.swp
