@@ -6,7 +6,6 @@ Tech Scout turns a technology name (e.g. *"solid-state batteries"*) into a struc
 
 Everything runs locally in Docker: n8n for orchestration, Ollama for the LLM and embeddings, Qdrant as the vector store. No paid APIs.
 
-> 📹 Demo video: *coming soon*
 
 ---
 
